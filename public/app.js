@@ -637,7 +637,7 @@ function svcGrid(kind, chosen) {
   return `<div class="svc">${CFG.services.filter(s => s.kind === kind).map(s => {
     const on = chosen.includes(s.id);
     return `<button type="button" class="tile" data-svc="${kind}" data-value="${s.id}" aria-pressed="${on}">
-      <span class="mono" aria-hidden="true">${esc(MONO[s.id] || s.name[0])}</span><span class="name">${esc(s.name.replace(" (free)", ""))}</span><span class="tick" aria-hidden="true"></span></button>`;
+      <span class="mono" aria-hidden="true">${esc(MONO[s.id] || s.name[0])}</span><span class="name">${esc(s.name.replace(" (free)", ""))}</span></button>`;
   }).join("")}</div>`;
 }
 
@@ -645,6 +645,73 @@ function svcGrid(kind, chosen) {
 const ROKU = { netflix: 12, prime: 13, youtube: 837, hulu: 2285, disney: 291097, max: 61322, peacock: 593099,
   paramount: 31440, appletv: 551012, tubi: 41468, pluto: 74519, roku: 151908, plex: 13535, starz: 65067 };
 const SHORTCUT = "Next Reel to Roku";
+
+// The Roku setup, once per household. The person who builds the Shortcut shares
+// it as an iCloud link; everyone else just taps "Add Shortcut".
+function rokuGuide() {
+  return `
+    <div class="guide">
+      <h3>Already have the shortcut link?</h3>
+      <p class="tv-hint">If someone at home already set this up, ask them to send you the shortcut link. Tap it, then <b>Add Shortcut</b>. Then skip to <b>Test it</b> below.</p>
+
+      <h3>1 · On the Roku (once per TV)</h3>
+      <ol class="steps">
+        <li>Home → <b>Settings → System → Advanced system settings → Control by mobile apps</b> → set to <b>Enabled</b> (older Rokus say <b>Default</b>).</li>
+        <li><b>Settings → Network → About</b>: write down the <b>IP address</b>, e.g. <code>192.168.0.42</code>.</li>
+        <li>Optional but worth it: reserve that IP for the Roku in your router, so it never changes.</li>
+      </ol>
+
+      <h3>2 · Build the shortcut (one person, once)</h3>
+      <ol class="steps">
+        <li>Open the <b>Shortcuts</b> app → tap <b>+</b> (top right).</li>
+        <li>Tap the name at the top → <b>Rename</b> → type exactly <code>${SHORTCUT}</code>.</li>
+        <li>Tap <b>Search Actions</b> at the bottom, search <b>URL</b>, tap it.</li>
+        <li>Tap the blue URL text and type <code>http://192.168.0.42:8060/</code> using <b>your</b> Roku's IP. Keep the slash at the end.</li>
+        <li>With the cursor right after that slash, tap <b>Shortcut Input</b> in the bar above the keyboard. It should read <code>http://…:8060/</code> followed by a <b>Shortcut Input</b> bubble.</li>
+        <li>Search actions again for <b>Get Contents of URL</b> and add it under the URL.</li>
+        <li>In it, tap the <b>›</b> arrow (or <b>Show More</b>) → <b>Method</b> → <b>POST</b>.</li>
+        <li>Tap the <b>ⓘ</b> at the bottom → turn on <b>Show in Share Sheet</b>, then tap <b>Done</b> twice.</li>
+      </ol>
+
+      <h3>3 · Test it</h3>
+      <div class="tv-row"><button class="ghost" data-act="roku-test">Send the Roku to its home screen</button></div>
+      <ol class="steps">
+        <li>Your iPhone will ask a few one-time questions: allow Next Reel to open Shortcuts, allow the shortcut to <b>connect to your Roku's IP</b> (choose <b>Always Allow</b>), and allow Shortcuts to use your <b>local network</b>.</li>
+        <li>If the TV jumps to its home screen, you're done. Your phone must be on the same Wi-Fi as the Roku.</li>
+        <li>Nothing happened? Recheck the IP, the <b>POST</b> setting, and that "Control by mobile apps" is on.</li>
+      </ol>
+
+      <h3>4 · Share it with your household</h3>
+      <ol class="steps">
+        <li>In the Shortcuts app, press and hold <b>${SHORTCUT}</b> → <b>Share</b> → <b>Copy iCloud Link</b>, and text it. They tap it → <b>Add Shortcut</b>. It already knows your Roku.</li>
+        <li>On their phone they still pick <b>Roku + iPhone</b> here in Services (Next Reel settings are per phone).</li>
+      </ol>
+      <div class="tv-row"><button class="ghost" data-act="share-steps">Send these steps instead</button></div>
+
+      <p class="tv-hint">Roku doesn't let other apps open a specific movie, so this opens the right app on the TV (Netflix, Hulu…). Then pick the title with the remote or the Roku app.</p>
+    </div>`;
+}
+
+function rokuStepsText() {
+  return [
+    "Next Reel → Roku setup (iPhone)",
+    "",
+    "If someone already made the shortcut, just tap their iCloud link and choose Add Shortcut.",
+    "",
+    "ROKU (once): Settings > System > Advanced system settings > Control by mobile apps > Enabled.",
+    "Settings > Network > About: note the IP address.",
+    "",
+    "SHORTCUT (once):",
+    `1. Shortcuts app > + > rename it exactly "${SHORTCUT}".`,
+    "2. Add action URL: http://YOUR-ROKU-IP:8060/  then insert Shortcut Input right after the slash.",
+    "3. Add action Get Contents of URL > Show More > Method: POST.",
+    "4. ⓘ > turn on Show in Share Sheet > Done.",
+    "",
+    "TEST: open Next Reel > Services > Your TV > Roku + iPhone > Send the Roku to its home screen. Allow the prompts (choose Always Allow).",
+    "",
+    location.origin,
+  ].join("\n");
+}
 
 function renderServices() {
   const tv = prefs.tv || "other";
@@ -655,17 +722,8 @@ function renderServices() {
     <div class="section"><h2>Free apps</h2>${svcGrid("free", prefs.free)}</div>
     <div class="section"><h2>Rent or buy from</h2>${svcGrid("store", prefs.stores)}</div>
     <div class="section"><h2>Your TV</h2>
-      ${seg("tv", [["other", "Cast from my phone"], ["roku", "Roku + iPhone"]], tv)}
-      ${tv === "roku" ? `
-        <ol class="steps">
-          <li>On the Roku: <b>Settings → System → Advanced system settings → Control by mobile apps</b> → Enabled. Note its IP under <b>Settings → Network → About</b>.</li>
-          <li>On your iPhone, open <b>Shortcuts</b> → <b>+</b>. Name it <code>${SHORTCUT}</code>.</li>
-          <li>Tap the <b>ⓘ</b> → turn on <b>Show in Share Sheet</b>, so it receives text.</li>
-          <li>Add <b>URL</b>: <code>http://YOUR-ROKU-IP:8060/</code> then insert the <b>Shortcut Input</b> variable right after the slash.</li>
-          <li>Add <b>Get Contents of URL</b>, set Method to <b>POST</b>. Done.</li>
-        </ol>
-        <div class="tv-row"><button class="ghost" data-act="roku-test">Test: go to the Roku home screen</button></div>
-        <p class="tv-hint">Roku doesn't let anyone open a specific movie from outside, so this opens the right app on the TV. Then pick the title with your remote or the Roku app.</p>`
+      ${seg("tv", [["other", "Cast from phone"], ["roku", "Roku + iPhone"]], tv)}
+      ${tv === "roku" ? rokuGuide()
       : `<p class="tv-hint" style="margin-top:10px">After you pick, tap "Open in Netflix" (or whichever service), then use the Cast or AirPlay button in that app. Most Roku, Fire TV, Google TV and smart TVs accept one of the two.</p>`}
     </div>
     <a class="btn full" href="#spin">Done</a>
@@ -769,6 +827,11 @@ function onClick(e) {
   if (act === "pick") { spin.winner = id; renderReels(); $("#reels").scrollIntoView({ block: "start" }); return setTimeout(burst, 60); }
   if (act === "roku") return runShortcut(`launch/${ROKU[el.dataset.svc]}`);
   if (act === "roku-test") return runShortcut("keypress/Home");
+  if (act === "share-steps") {
+    const text = rokuStepsText();
+    if (navigator.share) return navigator.share({ title: "Next Reel Roku setup", text }).catch(() => {});
+    return navigator.clipboard.writeText(text).then(() => toast("Steps copied. Paste them into a text.")).catch(() => toast("Couldn't copy here."));
+  }
   if (act === "back") { spin.winner = null; return renderReels(); }
   if (act === "swap") return swap(id);
   if (act === "seen" || act === "nope") {
