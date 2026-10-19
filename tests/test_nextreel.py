@@ -278,6 +278,14 @@ class TMDBSpinTest(unittest.TestCase):
         self.assertFalse(core.rating_ok({"rating": "PG"}, f))
         self.assertTrue(core.rating_ok({"rating": "NR"}, core.parse_filters({})), "no rating chip = anything")
 
+    def test_romcom_is_comedy_and_romance(self):
+        self.calls = []
+        f = core.parse_filters({"kind": ["movie"], "access": ["sub"], "subs": ["netflix"], "genres": ["comedy"], "tags": ["romcom"]})
+        with mock.patch.object(tmdb, "get", side_effect=self.fake_get):
+            p = tmdb.discover_params("movie", f, core.SERVICES)
+        self.assertEqual(p["with_genres"], "35,10749")
+        self.assertNotIn("with_keywords", p)
+
     def test_tv_horror_uses_keywords(self):
         self.calls = []
         f = core.parse_filters({"kind": ["tv"], "access": ["sub"], "subs": ["netflix"], "genres": ["horror"]})

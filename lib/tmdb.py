@@ -79,7 +79,7 @@ TAG_KEYWORDS = {
     "detective": ["detective", "private detective"],
     # comedy / romance
     "dark-comedy": ["dark comedy", "black comedy"], "parody": ["parody", "spoof"],
-    "romcom": ["romantic comedy"], "buddy": ["buddy comedy"],
+    "buddy": ["buddy comedy"],
     # sci-fi / fantasy
     "time-travel": ["time travel"], "space": ["outer space", "space travel", "space"], "dystopia": ["dystopia"],
     "ai": ["artificial intelligence (a.i.)", "artificial intelligence"], "alien": ["alien", "alien invasion"],
@@ -93,7 +93,9 @@ TAG_KEYWORDS = {
     "music": ["music", "concert"],
 }
 TV_HORROR_KEYWORDS = ["horror", "supernatural", "ghost", "zombie", "vampire", "slasher"]
-SUPPORTED_TAGS = list(TAG_KEYWORDS) + ["classic"]
+# Not keywords: "classic" is a date filter, and "romcom" is Comedy AND Romance,
+# because TMDB has no usable romantic-comedy keyword (it returned nothing live).
+SUPPORTED_TAGS = list(TAG_KEYWORDS) + ["romcom", "classic"]
 
 _cache, _lock = {}, threading.Lock()
 _ctx = ssl.create_default_context()
@@ -234,6 +236,9 @@ def discover_params(kind, f, services):
         kw_queries = kw_queries or TV_HORROR_KEYWORDS
     if genre_ids:
         p["with_genres"] = "|".join(map(str, genre_ids))
+    if "romcom" in f["tags"] and len(f["tags"]) == 1:
+        # Comma means AND in TMDB's genre filter. TV has no Romance genre, so drama stands in.
+        p["with_genres"] = "35,10749" if kind == "movie" else "35,18"
     if kw_queries:
         kws = keyword_ids(kw_queries)
         if not kws:
