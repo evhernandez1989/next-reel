@@ -65,7 +65,7 @@ REV_MOVIE = {v: k for k, v in GENRE_MOVIE.items()}
 REV_TV = {16: "animation", 35: "comedy", 80: "crime", 99: "documentary", 18: "drama", 10751: "family",
           9648: "mystery", 10759: "action", 10765: "scifi"}
 
-# Flavours TMDB can do, as keyword searches. The rest are handled by date or rating, or hidden.
+# Styles and extras TMDB can do, as keyword searches. The rest are handled by date or rating, or hidden.
 TAG_KEYWORDS = {
     "halloween": ["halloween"], "slasher": ["slasher"], "supernatural": ["supernatural"],
     "haunted": ["haunted house"], "folk": ["folk horror"], "creature": ["creature feature", "monster"],

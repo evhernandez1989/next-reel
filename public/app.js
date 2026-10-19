@@ -30,6 +30,10 @@ const TAG_NAMES = { halloween: "Halloween night", cozy: "Cozy", slasher: "Slashe
   haunted: "Haunted house", folk: "Folk horror", creature: "Creature feature", zombie: "Zombies", vampire: "Vampires",
   witch: "Witches", psychological: "Psychological", "found-footage": "Found footage", "horror-comedy": "Horror-comedy",
   classic: "Classic (pre-1990)", international: "International" };
+// Horror styles only make sense with Horror picked; Extras work with any genre.
+const HORROR_STYLES = ["slasher", "supernatural", "haunted", "folk", "creature", "zombie", "vampire", "witch",
+  "psychological", "found-footage", "horror-comedy"];
+const EXTRAS = ["halloween", "classic", "international"];
 const LENGTHS = [[0, "Any length"], [100, "Under 100 min"], [120, "Under 2 hrs"]];
 const live = () => CFG.source === "tmdb";
 const scares = () => live()
@@ -140,7 +144,7 @@ function loosenHint() {
   if (!Object.values(a).some(Boolean)) return "Turn on at least one way to watch.";
   if (a.sub && !a.free && !a.rent && !a.buy && !prefs.subs.length) return "Pick your subscriptions in Services, or allow free or rentals.";
   if (prefs.scare !== "any") return "Try a different scare level.";
-  if (prefs.tags.length) return "Drop a flavour or two.";
+  if (prefs.tags.length) return "Drop a style or extra or two.";
   if (prefs.genres.length) return "Add another genre.";
   return "Allow rentals to open up nearly everything.";
 }
@@ -231,14 +235,15 @@ function howLine() {
 
 function renderSheet() {
   const body = $("#sheetBody");
-  const flavourOpen = prefs.tags.length > 0;
-  const tags = CFG.tags.map(g => chip("tags", g, TAG_NAMES[g] || g, prefs.tags.includes(g))).join("");
+  const horror = prefs.genres.includes("horror");
+  const styles = CFG.tags.filter(t => HORROR_STYLES.includes(t));
+  const extras = CFG.tags.filter(t => EXTRAS.includes(t));
   body.innerHTML = `
     <h2>Watch</h2>${seg("kind", [["both", "Both"], ["movie", "Movies"], ["tv", "Shows"]], prefs.kind)}
     <h2>How</h2><div class="chips">${ACCESS.map(([k, l]) => chip("access", k, l, prefs.access[k])).join("")}</div>
     <h2>Genre</h2><div class="chips">${CFG.genres.map(g => chip("genres", g, GENRE_NAMES[g] || g, prefs.genres.includes(g))).join("")}</div>
-    <h2>Flavour</h2>
-    <details class="more" ${flavourOpen ? "open" : ""}><summary>Show ${CFG.tags.length} flavours</summary><div class="chips">${tags}</div></details>
+    ${horror && styles.length ? `<h2>Horror style</h2><div class="chips">${styles.map(g => chip("tags", g, TAG_NAMES[g] || g, prefs.tags.includes(g))).join("")}</div>` : ""}
+    ${extras.length ? `<h2>Extras</h2><div class="chips">${extras.map(g => chip("tags", g, TAG_NAMES[g] || g, prefs.tags.includes(g))).join("")}</div>` : ""}
     <h2>Scare level</h2>${seg("scare", scares(), prefs.scare)}
     <h2>Movie length</h2>${seg("maxMinutes", LENGTHS, prefs.maxMinutes)}
     <p class="note" style="text-align:left">Your services are set on the <a href="#services">Services</a> tab.</p>`;
@@ -262,7 +267,7 @@ function renderSpin() {
     <div class="moods" role="group" aria-label="Quick picks">${PRESETS.map(p =>
       `<button type="button" class="mood ${prefs.preset === p.id ? "on" : ""}" data-preset="${p.id}">${esc(p.name)}</button>`).join("")}</div>
     <div class="filterbar">
-      ${pills.length ? "" : `<span class="muted small">Any genre, any flavour</span>`}
+      ${pills.length ? "" : `<span class="muted small">Any genre</span>`}
       ${pills.map(([g, v, l]) => `<button type="button" class="pill" data-clear="${g}" data-value="${esc(v)}" aria-label="Remove ${esc(l)}">${esc(l)} <span aria-hidden="true">×</span></button>`).join("")}
       <button type="button" class="filters-btn" data-act="filters">Filters${pills.length ? ` <b>${pills.length}</b>` : ""}</button>
     </div>
@@ -624,6 +629,7 @@ function onClick(e) {
     const g = el.dataset.chip, v = el.dataset.value;
     if (g === "access") prefs.access[v] = !prefs.access[v];
     else prefs[g] = prefs[g].includes(v) ? prefs[g].filter(x => x !== v) : [...prefs[g], v];
+    if (!prefs.genres.includes("horror")) prefs.tags = prefs.tags.filter(t => !HORROR_STYLES.includes(t));
     return filtersChanged(inSheet);
   }
   if (el.dataset.seg) {
@@ -635,6 +641,7 @@ function onClick(e) {
   if (el.dataset.clear) {
     const g = el.dataset.clear, v = el.dataset.value;
     if (g === "genres" || g === "tags") prefs[g] = prefs[g].filter(x => x !== v);
+    if (!prefs.genres.includes("horror")) prefs.tags = prefs.tags.filter(t => !HORROR_STYLES.includes(t));
     else prefs[g] = g === "maxMinutes" ? 0 : v;
     return filtersChanged(false);
   }
@@ -696,7 +703,7 @@ window.addEventListener("hashchange", route);
   // Drop anything this server no longer offers.
   for (const k of ["subs", "free", "stores"]) prefs[k] = prefs[k].filter(id => SVC[id]);
   prefs.genres = prefs.genres.filter(g => CFG.genres.includes(g));
-  prefs.tags = prefs.tags.filter(g => CFG.tags.includes(g));
+  prefs.tags = prefs.tags.filter(g => CFG.tags.includes(g) && g !== "cozy");
   if (!scares().some(([v]) => v === prefs.scare)) prefs.scare = "any";
   applyTheme();
   if (joinFromLink() && !location.hash) location.hash = "#party";

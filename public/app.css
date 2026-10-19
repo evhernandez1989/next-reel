@@ -1,5 +1,5 @@
 /* Next Reel. One accent, used for the primary action and "selected", nothing else.
-   Where-to-watch tags carry their own colours so they read at a glance:
+   Where-to-watch tags carry their own colors so they read at a glance:
    gold = in a subscription, mint = free, lavender = rent or buy. */
 :root {
   color-scheme: dark;
