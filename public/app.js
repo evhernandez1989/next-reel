@@ -52,14 +52,15 @@ const PRESETS = [
 function defaults() {
   const ids = kind => CFG.services.filter(s => s.kind === kind).map(s => s.id);
   return { subs: [], free: ids("free"), stores: ids("store"), access: { sub: true, free: true, rent: false, buy: false },
-    kind: "both", genres: [], tags: [], scare: "any", maxMinutes: 0, theme: "auto", preset: null, setUp: false };
+    kind: "both", genres: [], tags: [], scare: "any", maxMinutes: 0, tv: "other", preset: null, setUp: false };
 }
 function save() { saved.set("prefs", prefs); }
 
 /* --- theme ---------------------------------------------------------------- */
 
+// One look all year, plus a Halloween skin that switches itself on for October.
 function halloweenOn() {
-  return prefs.theme === "halloween" || (prefs.theme === "auto" && new Date().getMonth() === 9);
+  return new Date().getMonth() === 9;
 }
 function applyTheme() {
   const on = halloweenOn();
@@ -187,6 +188,57 @@ function titleCard(t, body = "") {
   </div></div></div>${body}`;
 }
 
+// "Open in" links for services whose web links reliably hand off to their phone app.
+const OPEN_IN = {
+  netflix: q => `https://www.netflix.com/search?q=${q}`, hulu: q => `https://www.hulu.com/search?q=${q}`,
+  disney: q => `https://www.disneyplus.com/search?q=${q}`, prime: q => `https://www.amazon.com/gp/video/search?phrase=${q}`,
+  appletv: q => `https://tv.apple.com/search?term=${q}`, youtube: q => `https://www.youtube.com/results?search_query=${q}`,
+  tubi: q => `https://tubitv.com/search/${q}`, roku: q => `https://therokuchannel.roku.com/search/${q}`,
+  apple: q => `https://tv.apple.com/search?term=${q}`, amazon: q => `https://www.amazon.com/gp/video/search?phrase=${q}`,
+};
+
+// The first way I can actually watch it, as a service id.
+function bestService(t) {
+  const a = prefs.access, subs = mySubs();
+  if (a.sub) { const s = t.subs.find(x => subs.has(x)); if (s) return s; }
+  if (a.free) { const s = t.free.find(x => prefs.free.includes(x)); if (s) return s; }
+  if (a.rent || a.buy) { const s = [...t.rent, ...t.buy].find(x => prefs.stores.includes(x)); if (s) return s; }
+  return null;
+}
+
+function tvActions(t) {
+  const svc = bestService(t), q = encodeURIComponent(t.title);
+  const open = svc && OPEN_IN[svc]
+    ? `<a class="btn" href="${esc(OPEN_IN[svc](q))}" target="_blank" rel="noopener noreferrer">Open in ${esc(svcName(svc))}</a>`
+    : `<a class="btn" href="${esc(findLink(t))}" target="_blank" rel="noopener noreferrer">Where to watch</a>`;
+  const roku = prefs.tv === "roku" && svc && ROKU[svc]
+    ? `<button class="ghost" data-act="roku" data-svc="${svc}">Open ${esc(svcName(svc))} on the Roku</button>` : "";
+  return open + roku;
+}
+
+function runShortcut(path) {
+  location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(SHORTCUT)}&input=text&text=${encodeURIComponent(path)}`;
+}
+
+function burst() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const card = $(".winner-card .poster") || $(".winner-card");
+  if (!card) return;
+  const r = card.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const icons = halloweenOn() ? ["🎃", "🦇", "👻", "🍬"] : ["🍿", "🎬", "⭐", "🍿"];
+  for (let i = 0; i < 18; i++) {
+    const el = document.createElement("span");
+    el.className = "burst";
+    el.textContent = icons[i % icons.length];
+    const a = (Math.PI * 2 * i) / 18 + Math.random() * .4, d = 90 + Math.random() * 90;
+    el.style.setProperty("--x0", `${cx - 11}px`); el.style.setProperty("--y0", `${cy - 11}px`);
+    el.style.setProperty("--x1", `${cx - 11 + Math.cos(a) * d}px`); el.style.setProperty("--y1", `${cy - 11 + Math.sin(a) * d}px`);
+    el.style.setProperty("--r", `${Math.random() * 360 - 180}deg`);
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1100);
+  }
+}
+
 function winnerCard(t, kicker, actions) {
   return `<div class="card reel winner winner-card">
     <div class="kicker">${esc(kicker)}</div>
@@ -286,7 +338,7 @@ function renderReels() {
   if (spin.winner) {
     const t = TITLES[spin.winner];
     box.innerHTML = winnerCard(t, halloweenOn() ? "Tonight's nightmare" : "Tonight's pick", `
-      <a class="btn" href="${esc(findLink(t))}" target="_blank" rel="noopener noreferrer">Where to watch</a>
+      ${tvActions(t)}
       <div class="row"><button class="ghost grow" data-act="watched" data-id="${esc(t.id)}">Mark watched</button>
       <button class="ghost grow" data-act="back">Back</button></div>`);
     return;
@@ -343,6 +395,7 @@ async function doSpin() {
   spin.rolling = true;
   btn.disabled = true;
   btn.textContent = "Spinning…";
+  btn.classList.add("spinning");
   let fresh = [];
   try {
     for (let tries = 0; tries < 3 && fresh.length < 3; tries++) {
@@ -354,6 +407,7 @@ async function doSpin() {
   if (!fresh.length) {
     spin.rolling = false;
     btn.disabled = false;
+    btn.classList.remove("spinning");
     btn.textContent = halloweenOn() ? "Spin if you dare" : "Spin";
     if (navigator.onLine !== false) toast(Object.keys(seen).length ? "You've seen everything that came up. Loosen a filter or clear Watched." : loosenHint());
     return;
@@ -364,6 +418,7 @@ async function doSpin() {
   rollInto($("#reels"), finals, fresh, () => {
     spin.rolling = false;
     btn.disabled = false;
+    btn.classList.remove("spinning");
     btn.textContent = halloweenOn() ? "Spin again… if you dare" : "Spin again";
     renderReels();
   });
@@ -477,7 +532,7 @@ function renderParty() {
     const t = s.candidates.find(c => c.id === s.winner);
     const total = Object.values(s.tally).reduce((a, b) => a + b, 0) || 1;
     body = winnerCard(t, halloweenOn() ? "The room has chosen its fate" : "The room picked",
-        `<a class="btn" href="${esc(findLink(t))}" target="_blank" rel="noopener noreferrer">Where to watch</a>`) + `
+        tvActions(t)) + `
       <div class="card"><h2 style="margin-top:0">Votes</h2>${s.candidates.map(c => `
         <div style="margin-bottom:10px"><div class="row spread"><span>${esc(c.title)}</span><b>${s.tally[c.id]}</b></div>
         <div class="bar"><i style="width:${(100 * s.tally[c.id]) / total}%"></i></div></div>`).join("")}
@@ -516,6 +571,7 @@ async function partyAction(act, el) {
       setRoom(room);
     } else if (act === "reveal") {
       roomState = await roomCall("reveal", { host_token: room.host_token });
+      setTimeout(burst, 80);
     } else if (act === "leave") {
       if (room.host_token) await roomCall("end", { host_token: room.host_token }).catch(() => {});
       else await roomCall("leave", { player: room.player }).catch(() => {});
@@ -554,24 +610,49 @@ async function joinRoom() {
 
 /* --- Services & Watched --------------------------------------------------- */
 
+const MONO = { netflix: "N", hulu: "hu", max: "max", disney: "D+", prime: "pv", appletv: "tv+", peacock: "P",
+  paramount: "P+", shudder: "S", amcplus: "A+", mgmplus: "M+", starz: "St", mubi: "Mu", tubi: "T", pluto: "Pl",
+  roku: "R", kanopy: "K", plex: "Px", youtube: "YT", apple: "tv", amazon: "a", google: "G", fandango: "F" };
+
 function svcGrid(kind, chosen) {
-  return `<div class="svc">${CFG.services.filter(s => s.kind === kind).map(s =>
-    `<label><input type="checkbox" data-svc="${kind}" value="${s.id}" ${chosen.includes(s.id) ? "checked" : ""}>${esc(s.name)}</label>`).join("")}</div>`;
+  return `<div class="svc">${CFG.services.filter(s => s.kind === kind).map(s => {
+    const on = chosen.includes(s.id);
+    return `<button type="button" class="tile" data-svc="${kind}" data-value="${s.id}" aria-pressed="${on}">
+      <span class="mono" aria-hidden="true">${esc(MONO[s.id] || s.name[0])}</span><span class="name">${esc(s.name.replace(" (free)", ""))}</span><span class="tick" aria-hidden="true"></span></button>`;
+  }).join("")}</div>`;
 }
 
+// Roku apps on the Roku itself. Only ids we're sure of; anything else falls back to "open on your phone".
+const ROKU = { netflix: 12, prime: 13, youtube: 837, hulu: 2285, disney: 291097, max: 61322, peacock: 593099,
+  paramount: 31440, appletv: 551012, tubi: 41468, pluto: 74519, roku: 151908, plex: 13535, starz: 65067 };
+const SHORTCUT = "Next Reel to Roku";
+
 function renderServices() {
+  const tv = prefs.tv || "other";
   view.innerHTML = `<h1>Services</h1>
-    <p class="sub">Saved on this device only.</p>
-    <h2>Subscriptions you pay for</h2>${svcGrid("sub", prefs.subs)}
-    <p class="note" style="text-align:left">AMC+ includes Shudder's library.</p>
-    <h2>Free apps you'd use</h2>${svcGrid("free", prefs.free)}
-    <h2>Stores you'd rent or buy from</h2>${svcGrid("store", prefs.stores)}
-    <h2>Look</h2>${seg("theme", [["auto", "Auto"], ["halloween", "Halloween"], ["plain", "Classic"]], prefs.theme)}
-    <p class="note" style="text-align:left">Auto turns spooky for October.</p>
-    <div style="height:18px"></div><a class="btn full" href="#spin">Done</a>
+    <p class="sub">Tap what you have. Saved on this device only.</p>
+    <div class="section"><h2>Subscriptions</h2>${svcGrid("sub", prefs.subs)}
+      <p class="note" style="text-align:left">AMC+ includes Shudder's library.</p></div>
+    <div class="section"><h2>Free apps</h2>${svcGrid("free", prefs.free)}</div>
+    <div class="section"><h2>Rent or buy from</h2>${svcGrid("store", prefs.stores)}</div>
+    <div class="section"><h2>Your TV</h2>
+      ${seg("tv", [["other", "Cast from my phone"], ["roku", "Roku + iPhone"]], tv)}
+      ${tv === "roku" ? `
+        <ol class="steps">
+          <li>On the Roku: <b>Settings → System → Advanced system settings → Control by mobile apps</b> → Enabled. Note its IP under <b>Settings → Network → About</b>.</li>
+          <li>On your iPhone, open <b>Shortcuts</b> → <b>+</b>. Name it <code>${SHORTCUT}</code>.</li>
+          <li>Tap the <b>ⓘ</b> → turn on <b>Show in Share Sheet</b>, so it receives text.</li>
+          <li>Add <b>URL</b>: <code>http://YOUR-ROKU-IP:8060/</code> then insert the <b>Shortcut Input</b> variable right after the slash.</li>
+          <li>Add <b>Get Contents of URL</b>, set Method to <b>POST</b>. Done.</li>
+        </ol>
+        <div class="tv-row"><button class="ghost" data-act="roku-test">Test: go to the Roku home screen</button></div>
+        <p class="tv-hint">Roku doesn't let anyone open a specific movie from outside, so this opens the right app on the TV. Then pick the title with your remote or the Roku app.</p>`
+      : `<p class="tv-hint" style="margin-top:10px">After you pick, tap "Open in Netflix" (or whichever service), then use the Cast or AirPlay button in that app. Most Roku, Fire TV, Google TV and smart TVs accept one of the two.</p>`}
+    </div>
+    <a class="btn full" href="#spin">Done</a>
     <p class="note">${live()
-      ? `Titles, posters and descriptions come from <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">TMDB</a>, and streaming availability from <a href="https://www.justwatch.com" target="_blank" rel="noopener noreferrer">JustWatch</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.`
-      : `Built-in catalog of ${esc(CFG.snapshot)} availability. Studio windows are steady (Universal → Peacock, Warner → HBO Max, Paramount → Paramount+), licensed titles move monthly.`}</p>`;
+      ? `Titles and posters from <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">TMDB</a>, streaming data from <a href="https://www.justwatch.com" target="_blank" rel="noopener noreferrer">JustWatch</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.`
+      : `Built-in catalog, availability as of ${esc(CFG.snapshot)}.`}</p>`;
 }
 
 function renderWatched() {
@@ -613,7 +694,7 @@ function filtersChanged(inSheet) {
 }
 
 function onClick(e) {
-  const el = e.target.closest("[data-chip],[data-seg],[data-preset],[data-clear],[data-act],#spin,#create,#join");
+  const el = e.target.closest("[data-chip],[data-seg],[data-preset],[data-clear],[data-svc],[data-act],#spin,#create,#join");
   if (!el) return;
   const inSheet = !!el.closest("#sheet");
   if (el.id === "spin") return doSpin();
@@ -625,6 +706,13 @@ function onClick(e) {
     prefs.preset = p.id; save(); resetSpin();
     return renderSpin();
   }
+  if (el.dataset.svc && !el.dataset.act) {
+    const key = { sub: "subs", free: "free", store: "stores" }[el.dataset.svc], v = el.dataset.value;
+    prefs[key] = prefs[key].includes(v) ? prefs[key].filter(x => x !== v) : [...prefs[key], v];
+    prefs.setUp = true; save(); resetSpin();
+    el.setAttribute("aria-pressed", String(prefs[key].includes(v)));
+    return;
+  }
   if (el.dataset.chip) {
     const g = el.dataset.chip, v = el.dataset.value;
     if (g === "access") prefs.access[v] = !prefs.access[v];
@@ -635,7 +723,7 @@ function onClick(e) {
   if (el.dataset.seg) {
     const g = el.dataset.seg, v = el.dataset.value;
     prefs[g] = g === "maxMinutes" ? Number(v) : v;
-    if (g === "theme") { save(); applyTheme(); return renderServices(); }
+    if (g === "tv") { save(); return renderServices(); }
     return filtersChanged(inSheet);
   }
   if (el.dataset.clear) {
@@ -652,7 +740,9 @@ function onClick(e) {
     return filtersChanged(true);
   }
   if (["room-spin", "vote", "reveal", "leave", "share"].includes(act)) return partyAction(act, el);
-  if (act === "pick") { spin.winner = id; renderReels(); return $("#reels").scrollIntoView({ block: "start" }); }
+  if (act === "pick") { spin.winner = id; renderReels(); $("#reels").scrollIntoView({ block: "start" }); return setTimeout(burst, 60); }
+  if (act === "roku") return runShortcut(`launch/${ROKU[el.dataset.svc]}`);
+  if (act === "roku-test") return runShortcut("keypress/Home");
   if (act === "back") { spin.winner = null; return renderReels(); }
   if (act === "swap") return swap(id);
   if (act === "seen" || act === "nope") {
@@ -672,14 +762,6 @@ $("#sheet").addEventListener("click", e => {
   onClick(e);
 });
 $("#sheet").addEventListener("close", () => { if ((location.hash || "#spin") === "#spin") renderSpin(); });
-
-view.addEventListener("change", e => {
-  const el = e.target;
-  if (!el.dataset.svc) return;
-  const key = { sub: "subs", free: "free", store: "stores" }[el.dataset.svc];
-  prefs[key] = el.checked ? [...new Set([...prefs[key], el.value])] : prefs[key].filter(x => x !== el.value);
-  prefs.setUp = true; save(); resetSpin();
-});
 
 view.addEventListener("keydown", e => {
   if (e.key !== "Enter") return;

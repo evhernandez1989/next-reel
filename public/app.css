@@ -23,19 +23,6 @@
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   --display: var(--font);
 }
-@media (prefers-color-scheme: light) {
-  :root:not(.halloween) {
-    color-scheme: light;
-    --bg: #F7F5F0; --surface: #FFFFFF; --surface-2: #EFECE5; --line: #E4E0D7;
-    --ink: #17161A; --soft: #6B6873;
-    --accent: #17161A; --on-accent: #FFFFFF; --accent-soft: rgba(23, 22, 26, .07); --brand: #17161A;
-    --sub: #8A5A00;  --sub-bg: #FBF0D9;
-    --free: #0B7A55; --free-bg: #DDF5EB;
-    --rent: #5B3FC4; --rent-bg: #ECE7FF;
-    --bad: #B3261E;
-    --shadow: 0 1px 2px rgba(23, 22, 26, .05), 0 8px 24px rgba(23, 22, 26, .06);
-  }
-}
 html.halloween {
   color-scheme: dark;
   --bg: #0C0A10; --surface: #17131F; --surface-2: #221C2D; --line: #2E2640;
@@ -181,9 +168,41 @@ details.more[open] summary { display: none; }
 
 /* services, watched, party */
 .svc { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.svc label { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px; background: var(--surface); border-radius: var(--r-control); border: 1px solid var(--line); cursor: pointer; font-weight: 550; font-size: .93rem; }
-.svc input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
-.svc label:has(input:checked) { border-color: var(--accent); }
+.tile {
+  justify-content: flex-start; gap: 10px; min-height: 52px; padding: 0 12px; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 14px; font-weight: 580; font-size: .88rem; text-align: left;
+}
+.tile .mono {
+  width: 30px; height: 30px; border-radius: 9px; flex: none; display: grid; place-items: center;
+  background: var(--surface-2); color: var(--soft); font-size: .78rem; font-weight: 750; letter-spacing: -.02em;
+}
+.tile .name { flex: 1; min-width: 0; line-height: 1.2; overflow-wrap: anywhere; }
+.tile .tick { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line); flex: none; display: grid; place-items: center; }
+.tile[aria-pressed=true] { border-color: var(--accent); }
+.tile[aria-pressed=true] .mono { background: var(--accent-soft); color: var(--accent); }
+.tile[aria-pressed=true] .tick { background: var(--accent); border-color: var(--accent); }
+.tile[aria-pressed=true] .tick::after { content: ""; width: 9px; height: 5px; border: 2px solid var(--on-accent); border-top: 0; border-right: 0; transform: translateY(-1px) rotate(-45deg); }
+.section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 4px 14px 14px; margin-bottom: 14px; }
+.section h2 { margin-top: 14px; }
+.section .svc .tile { background: var(--surface-2); border-color: transparent; }
+.section .svc .tile[aria-pressed=true] { border-color: var(--accent); }
+
+/* fun: a burst when the pick lands */
+.burst { position: fixed; pointer-events: none; z-index: 30; font-size: 22px; left: 0; top: 0; animation: burst 1s cubic-bezier(.2, .7, .3, 1) forwards; }
+@keyframes burst {
+  0% { transform: translate(var(--x0), var(--y0)) scale(.4); opacity: 1; }
+  100% { transform: translate(var(--x1), var(--y1)) rotate(var(--r)) scale(1); opacity: 0; }
+}
+#spin.spinning { background-image: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%); background-size: 200% 100%; animation: shimmer 1s linear infinite; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* watch-on-TV options */
+.tv-row { display: grid; gap: 8px; margin-top: 8px; }
+.tv-hint { font-size: .8rem; color: var(--soft); margin: 2px 0 0; }
+.steps { margin: 6px 0 0; padding-left: 20px; font-size: .9rem; }
+.steps li + li { margin-top: 6px; }
+.steps code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-size: .85em; }
+
 .list .item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
 .list .item:first-child { border-top: 0; }
 .players { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
