@@ -238,6 +238,7 @@ class TMDBSpinTest(unittest.TestCase):
         num = int(path.rsplit("/", 1)[1])
         prov = {"flatrate": [{"provider_name": "Netflix"}]} if num == 10 else {"flatrate": [{"provider_name": "Hulu"}]}
         return {"id": num, "title": "T%d" % num, "release_date": "2020-01-01", "genres": [{"id": 27}],
+                "release_dates": {"results": [{"iso_3166_1": "US", "release_dates": [{"certification": "PG-13"}]}]},
                 "watch/providers": {"results": {"US": prov}}}
 
     def test_spin_builds_params_and_keeps_only_watchable(self):
@@ -253,6 +254,15 @@ class TMDBSpinTest(unittest.TestCase):
         self.assertEqual(disc["with_watch_monetization_types"], "flatrate|free|ads")
         self.assertEqual((disc["with_genres"], disc["with_keywords"]), ("27", "3335"))
         self.assertEqual(disc["certification.lte"], "PG-13")
+
+    def test_cozy_drops_titles_rated_r_despite_tmdb(self):
+        f = core.parse_filters({"scare": ["cozy"]})
+        self.assertFalse(tmdb.rating_ok({"rating": "R"}, f))
+        self.assertFalse(tmdb.rating_ok({"rating": "NR"}, f))
+        self.assertTrue(tmdb.rating_ok({"rating": "PG-13"}, f))
+        f = core.parse_filters({"scare": ["terrifying"]})
+        self.assertTrue(tmdb.rating_ok({"rating": "TV-MA"}, f))
+        self.assertFalse(tmdb.rating_ok({"rating": "PG"}, f))
 
     def test_tv_horror_uses_keywords(self):
         self.calls = []

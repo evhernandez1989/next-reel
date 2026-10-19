@@ -232,6 +232,21 @@ def discover_params(kind, f, services):
     return p
 
 
+# TMDB's certification filter matches if *any* US release has the rating, so
+# Midsommar (R, plus an unrated cut) passes "PG-13 and under". Check the rating
+# we actually show instead.
+COZY_RATINGS = {"G", "PG", "PG-13", "TV-Y", "TV-Y7", "TV-G", "TV-PG", "TV-14"}
+SCARY_RATINGS = {"R", "NC-17", "TV-MA"}
+
+
+def rating_ok(t, f):
+    if f["scare"] == "cozy" or "cozy" in f["tags"]:
+        return t["rating"] in COZY_RATINGS
+    if f["scare"] == "terrifying":
+        return t["rating"] in SCARY_RATINGS
+    return True
+
+
 def spin(f, services, usable, want=12):
     """A batch of enriched titles that match f, plus TMDB's match count."""
     kinds = ["movie", "tv"] if f["kind"] == "both" else [f["kind"]]
@@ -250,10 +265,10 @@ def spin(f, services, usable, want=12):
         data = first if page == 1 else get("/discover/" + kind, dict(p, page=page), ttl=1800)
         candidates += ["%s:%d" % (kind, r["id"]) for r in data.get("results", [])]
     rng.shuffle(candidates)
-    candidates = candidates[: want + 6]
+    candidates = candidates[: want * 2]
     with ThreadPoolExecutor(max_workers=8) as pool:
         titles = list(pool.map(lambda i: _safe_details(i, services), candidates))
-    titles = [t for t in titles if t and usable(t)]
+    titles = [t for t in titles if t and usable(t) and rating_ok(t, f)]
     return total, titles[:want]
 
 
