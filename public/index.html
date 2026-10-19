@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1A0E2E">
+<meta name="theme-color" content="#0E0E11">
 <meta name="apple-mobile-web-app-title" content="Next Reel">
 <title>Next Reel</title>
 <link rel="manifest" href="/manifest.json">
@@ -25,6 +25,14 @@
   <a href="#services" data-tab="services"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>Services</span></a>
   <a href="#watched" data-tab="watched"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg><span>Watched</span></a>
 </nav>
+<dialog class="sheet" id="sheet" aria-labelledby="sheetTitle">
+  <form method="dialog" class="sheet-inner">
+    <div class="sheet-grab" aria-hidden="true"></div>
+    <div class="sheet-head"><h3 id="sheetTitle">Filters</h3><button type="button" class="text" data-act="reset">Reset</button></div>
+    <div class="sheet-body" id="sheetBody"></div>
+    <div class="sheet-foot"><button class="big" id="sheetDone" value="done">Show titles</button></div>
+  </form>
+</dialog>
 <div id="toast" role="status" hidden></div>
 <script src="/app.js"></script>
 </body>

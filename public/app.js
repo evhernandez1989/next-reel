@@ -37,12 +37,12 @@ const scares = () => live()
   : [["any", "Any"], ["cozy", "Cozy"], ["spooky", "Spooky"], ["terrifying", "Terrifying"]];
 
 const PRESETS = [
-  { id: "fright", name: "🎃 Fright Night", note: "Every kind of horror", set: { genres: ["horror"], tags: [], scare: "any" } },
-  { id: "halloween", name: "🕯️ Halloween night", note: "Set on or made for Oct 31", set: { genres: [], tags: ["halloween"], scare: "any" } },
-  { id: "cozy", name: "🧙 Cozy spooky", note: "Spooky, not scary", set: { genres: ["horror", "fantasy"], tags: [], scare: "cozy" } },
-  { id: "terror", name: "💀 Terrify me", note: "The real scary stuff", set: { genres: ["horror"], tags: [], scare: "terrifying" } },
-  { id: "free", name: "🆓 Free tonight", note: "Nothing to pay for", set: { access: { sub: false, free: true, rent: false, buy: false } } },
-  { id: "any", name: "🎲 Anything", note: "Clear genre filters", set: { genres: [], tags: [], scare: "any", kind: "both", maxMinutes: 0 } },
+  { id: "fright", name: "🎃 Fright Night", set: { genres: ["horror"], tags: [], scare: "any" } },
+  { id: "halloween", name: "🕯️ Halloween", set: { genres: [], tags: ["halloween"], scare: "any" } },
+  { id: "cozy", name: "🧙 Cozy spooky", set: { genres: ["horror", "fantasy"], tags: [], scare: "cozy" } },
+  { id: "terror", name: "💀 Terrify me", set: { genres: ["horror"], tags: [], scare: "terrifying" } },
+  { id: "free", name: "🆓 Free tonight", set: { access: { sub: false, free: true, rent: false, buy: false } } },
+  { id: "any", name: "🎲 Anything", set: { genres: [], tags: [], scare: "any", kind: "both", maxMinutes: 0 } },
 ];
 
 function defaults() {
@@ -60,7 +60,7 @@ function halloweenOn() {
 function applyTheme() {
   const on = halloweenOn();
   document.documentElement.classList.toggle("halloween", on);
-  $('meta[name="theme-color"]').content = on ? "#0E0818" : "#1A0E2E";
+  $('meta[name="theme-color"]').content = on ? "#0C0A10" : "#0E0E11";
 }
 
 /* --- matching ------------------------------------------------------------- */
@@ -116,14 +116,21 @@ async function refreshCount() {
   paintCount();
 }
 
-function paintCount() {
-  const el = $(".count"), btn = $("#spin");
-  if (!el) return;
+function countText() {
   const n = match.total;
-  if (n == null) el.textContent = "Counting…";
-  else if (n < 0) el.textContent = "Couldn't reach the reels. Check your connection.";
-  else el.innerHTML = `<b>${match.source === "tmdb" && n >= 1000 ? (Math.floor(n / 100) * 100).toLocaleString() + "+" : n.toLocaleString()}</b> title${n === 1 ? "" : "s"} match`;
+  if (n == null) return "Counting…";
+  if (n < 0) return "Couldn't reach the reels. Check your connection.";
+  const shown = match.source === "tmdb" && n >= 1000 ? (Math.floor(n / 100) * 100).toLocaleString() + "+" : n.toLocaleString();
+  return `<b>${shown}</b> match${n === 1 ? "" : "es"}`;
+}
+
+function paintCount() {
+  const n = match.total;
+  document.querySelectorAll(".count").forEach(el => { el.innerHTML = countText(); });
+  const btn = $("#spin");
   if (btn && !spin.rolling) btn.disabled = n === 0;
+  const done = $("#sheetDone");
+  if (done) done.textContent = n == null ? "Show titles" : n === 0 ? "Nothing matches" : `Show ${countText().replace(/<\/?b>/g, "").replace(/ match(es)?$/, "")} titles`;
   const hint = $("#hint");
   if (hint) hint.textContent = n === 0 ? loosenHint() : "";
 }
@@ -142,8 +149,7 @@ function loosenHint() {
 
 function scareIcons(n) {
   if (!n) return "";
-  const icon = halloweenOn() ? "🎃" : "●";
-  return `<span class="scare" title="Scare level ${n} of 5" aria-label="Scare level ${n} of 5">${icon.repeat(n)}</span>`;
+  return ` · <span title="Scare level ${n} of 5" aria-label="Scare level ${n} of 5">${halloweenOn() ? "🎃" : "Scare"} ${n}/5</span>`;
 }
 
 function metaLine(t) {
@@ -152,25 +158,39 @@ function metaLine(t) {
   return [t.year, t.kind === "movie" ? "Movie" : "Series", len, t.rating].filter(Boolean).map(esc).join(" · ");
 }
 
-function whereTags(t, max = 4) {
+function whereTags(t, max = 2, also = false) {
   const os = offers(t);
   const tags = os.slice(0, max).map(o => `<span class="tag ${o.kind}">${esc(o.label)}</span>`);
-  const subs = mySubs();
-  const others = [...t.subs.filter(s => !subs.has(s)).map(svcName), ...(t.others || [])];
-  if (others.length && os.length < max) tags.push(`<span class="tag">Also on ${esc([...new Set(others)].slice(0, 3).join(", "))}</span>`);
-  return `<div class="where">${tags.join("")}</div>`;
+  if (also) {
+    const subs = mySubs();
+    const others = [...t.subs.filter(s => !subs.has(s)).map(svcName), ...(t.others || [])];
+    if (others.length) tags.push(`<span class="tag">Also on ${esc([...new Set(others)].slice(0, 3).join(", "))}</span>`);
+  }
+  return tags.length ? `<div class="where">${tags.join("")}</div>` : "";
 }
 
 const findLink = t => t.link || `https://www.justwatch.com/us/search?q=${encodeURIComponent(t.title)}`;
-const poster = t => t.poster ? `<img class="poster" src="${esc(t.poster)}" alt="" loading="lazy" width="80" height="120">` : "";
+const poster = (t, cls = "") => t.poster
+  ? `<img class="poster ${cls}" src="${esc(t.poster)}" alt="" loading="lazy" width="76" height="114">`
+  : `<div class="poster ph ${cls}" aria-hidden="true">${esc((t.title || "?").trim()[0] || "?")}</div>`;
 
 function titleCard(t, body = "") {
-  return `<div class="face"><div class="row top">${poster(t)}<div class="grow">
-    <div class="row spread"><h3>${esc(t.title)}</h3>${scareIcons(t.scare)}</div>
-    <div class="meta">${metaLine(t)}</div>
-    <p class="blurb">${esc(t.blurb)}</p></div></div>
+  return `<div class="face"><div class="tc">${poster(t)}<div class="tc-text">
+    <h3>${esc(t.title)}</h3>
+    <div class="meta">${metaLine(t)}${scareIcons(t.scare)}</div>
     ${whereTags(t)}
-  </div>${body}`;
+    <p class="blurb clamp">${esc(t.blurb)}</p>
+  </div></div></div>${body}`;
+}
+
+function winnerCard(t, kicker, actions) {
+  return `<div class="card reel winner winner-card">
+    <div class="kicker">${esc(kicker)}</div>
+    ${poster(t)}
+    <h3>${esc(t.title)}</h3><div class="meta">${metaLine(t)}${scareIcons(t.scare)}</div>
+    ${whereTags(t, 3, true)}
+    <p class="blurb">${esc(t.blurb)}</p>
+    <div class="actions">${actions}</div></div>`;
 }
 
 function toast(msg) {
@@ -184,49 +204,73 @@ function toast(msg) {
 /* --- Spin ----------------------------------------------------------------- */
 
 function chip(group, value, label, on) {
-  return `<button class="chip" data-chip="${group}" data-value="${esc(value)}" aria-pressed="${on}">${esc(label)}</button>`;
+  return `<button type="button" class="chip" data-chip="${group}" data-value="${esc(value)}" aria-pressed="${on}">${esc(label)}</button>`;
 }
 function seg(group, options, current) {
   return `<div class="seg" role="group">${options.map(([v, l]) =>
-    `<button data-seg="${group}" data-value="${esc(v)}" aria-pressed="${String(v) === String(current)}">${esc(l)}</button>`).join("")}</div>`;
+    `<button type="button" data-seg="${group}" data-value="${esc(v)}" aria-pressed="${String(v) === String(current)}">${esc(l)}</button>`).join("")}</div>`;
 }
 
-function filterSummary() {
-  const bits = [ACCESS.filter(([k]) => prefs.access[k]).map(([, l]) => l).join(", ") || "no way to watch"];
-  if (prefs.genres.length) bits.push(prefs.genres.map(g => GENRE_NAMES[g]).join("/"));
-  if (prefs.tags.length) bits.push(prefs.tags.map(g => TAG_NAMES[g]).join("/"));
-  if (prefs.scare !== "any") bits.push(prefs.scare);
-  return "· " + bits.join(" · ");
+// What's narrowing the spin right now, as removable pills. Access ("how") is
+// setup rather than mood, so it lives in the sheet and the count line.
+function activePills() {
+  const out = [];
+  if (prefs.kind !== "both") out.push(["kind", "both", prefs.kind === "movie" ? "Movies" : "Shows"]);
+  for (const g of prefs.genres) out.push(["genres", g, GENRE_NAMES[g] || g]);
+  for (const t of prefs.tags) out.push(["tags", t, TAG_NAMES[t] || t]);
+  const sc = scares().find(([v]) => v === prefs.scare);
+  if (prefs.scare !== "any" && sc) out.push(["scare", "any", sc[1]]);
+  if (prefs.maxMinutes) out.push(["maxMinutes", 0, LENGTHS.find(([v]) => v === prefs.maxMinutes)[1]]);
+  return out;
+}
+
+function howLine() {
+  const on = ACCESS.filter(([k]) => prefs.access[k]).map(([, l]) => l);
+  return on.length ? on.join(" · ") : "No way to watch selected";
+}
+
+function renderSheet() {
+  const body = $("#sheetBody");
+  const flavourOpen = prefs.tags.length > 0;
+  const tags = CFG.tags.map(g => chip("tags", g, TAG_NAMES[g] || g, prefs.tags.includes(g))).join("");
+  body.innerHTML = `
+    <h2>Watch</h2>${seg("kind", [["both", "Both"], ["movie", "Movies"], ["tv", "Shows"]], prefs.kind)}
+    <h2>How</h2><div class="chips">${ACCESS.map(([k, l]) => chip("access", k, l, prefs.access[k])).join("")}</div>
+    <h2>Genre</h2><div class="chips">${CFG.genres.map(g => chip("genres", g, GENRE_NAMES[g] || g, prefs.genres.includes(g))).join("")}</div>
+    <h2>Flavour</h2>
+    <details class="more" ${flavourOpen ? "open" : ""}><summary>Show ${CFG.tags.length} flavours</summary><div class="chips">${tags}</div></details>
+    <h2>Scare level</h2>${seg("scare", scares(), prefs.scare)}
+    <h2>Movie length</h2>${seg("maxMinutes", LENGTHS, prefs.maxMinutes)}
+    <p class="note" style="text-align:left">Your services are set on the <a href="#services">Services</a> tab.</p>`;
+  paintCount();
+}
+
+function openSheet() {
+  renderSheet();
+  const d = $("#sheet");
+  if (!d.open) d.showModal();
 }
 
 function renderSpin() {
   const spooky = halloweenOn();
-  const setup = !prefs.setUp ? `<div class="card"><h3>First, what do you pay for?</h3>
-      <p class="muted small">Pick your services once and every spin only shows what you can actually watch.</p>
-      <a class="btn" href="#services">Choose services</a></div>` : "";
-  const filtersOpen = saved.get("filtersOpen", true);
+  const pills = activePills();
+  const banner = !prefs.setUp ? `<div class="banner"><span>Add your services so every pick is something you can watch.</span><a href="#services">Set up →</a></div>` : "";
   view.innerHTML = `
     <h1>Next Reel</h1>
-    <p class="sub">${spooky ? "Pick your poison. Three come up, one gets watched." : "Can't decide? Spin. Three come up, one gets watched."}</p>
-    ${setup}
-    <h2>Quick picks</h2>
-    <div class="presets">${PRESETS.map(p => `<button class="preset ${prefs.preset === p.id ? "on" : ""}" data-preset="${p.id}"><b>${esc(p.name)}</b><span>${esc(p.note)}</span></button>`).join("")}</div>
-    <details class="card" id="filters" ${filtersOpen ? "open" : ""} style="margin-top:12px">
-      <summary><b>Filters</b> <span class="muted small">${esc(filterSummary())}</span></summary>
-      <h2>Watch</h2>${seg("kind", [["both", "Both"], ["movie", "Movies"], ["tv", "Shows"]], prefs.kind)}
-      <h2>How</h2><div class="chips">${ACCESS.map(([k, l]) => chip("access", k, l, prefs.access[k])).join("")}</div>
-      <h2>Genre</h2><div class="chips">${CFG.genres.map(g => chip("genres", g, GENRE_NAMES[g] || g, prefs.genres.includes(g))).join("")}</div>
-      <h2>Flavour</h2><div class="chips">${CFG.tags.map(g => chip("tags", g, TAG_NAMES[g] || g, prefs.tags.includes(g))).join("")}</div>
-      <h2>Scare level</h2>${seg("scare", scares(), prefs.scare)}
-      <h2>Movie length</h2>${seg("maxMinutes", LENGTHS, prefs.maxMinutes)}
-    </details>
-    <p class="count"></p>
+    <p class="sub">${spooky ? "Pick your poison." : "Three come up. One gets watched."}</p>
+    ${banner}
+    <div class="moods" role="group" aria-label="Quick picks">${PRESETS.map(p =>
+      `<button type="button" class="mood ${prefs.preset === p.id ? "on" : ""}" data-preset="${p.id}">${esc(p.name)}</button>`).join("")}</div>
+    <div class="filterbar">
+      ${pills.length ? "" : `<span class="muted small">Any genre, any flavour</span>`}
+      ${pills.map(([g, v, l]) => `<button type="button" class="pill" data-clear="${g}" data-value="${esc(v)}" aria-label="Remove ${esc(l)}">${esc(l)} <span aria-hidden="true">×</span></button>`).join("")}
+      <button type="button" class="filters-btn" data-act="filters">Filters${pills.length ? ` <b>${pills.length}</b>` : ""}</button>
+    </div>
     <button class="big" id="spin">${spooky ? "Spin if you dare" : "Spin"}</button>
+    <p class="count"></p>
     <p class="note" id="hint"></p>
     <div class="reels" id="reels"></div>
-    <p class="note">${live() ? "Where-to-watch is live from TMDB and JustWatch, and can still lag a day or two."
-      : `Availability is a ${esc(CFG.snapshot)} snapshot. Deals change monthly, so tap "Where to watch" before you settle in.`}</p>`;
-  $("#filters").addEventListener("toggle", e => saved.set("filtersOpen", e.target.open));
+    <p class="note">${esc(howLine())}${live() ? "" : ` · availability as of ${esc(CFG.snapshot)}`}</p>`;
   renderReels();
   refreshCount();
 }
@@ -236,26 +280,20 @@ function renderReels() {
   if (!box || spin.rolling) return;
   if (spin.winner) {
     const t = TITLES[spin.winner];
-    box.innerHTML = `<div class="card reel winner winner-card">
-      <div class="kicker">${halloweenOn() ? "Tonight's nightmare" : "Tonight's pick"}</div>
-      ${t.poster ? `<img class="poster big" src="${esc(t.poster)}" alt="">` : ""}
-      <h3>${esc(t.title)}</h3><div class="meta">${metaLine(t)} ${scareIcons(t.scare)}</div>
-      <p class="blurb">${esc(t.blurb)}</p>${whereTags(t)}
-      <div class="actions">
-        <a class="btn" href="${esc(findLink(t))}" target="_blank" rel="noopener noreferrer">Where to watch</a>
-        <button class="ghost" data-act="watched" data-id="${esc(t.id)}">Mark watched</button>
-        <button class="ghost" data-act="back">Back to the three</button>
-      </div></div>`;
+    box.innerHTML = winnerCard(t, halloweenOn() ? "Tonight's nightmare" : "Tonight's pick", `
+      <a class="btn" href="${esc(findLink(t))}" target="_blank" rel="noopener noreferrer">Where to watch</a>
+      <div class="row"><button class="ghost grow" data-act="watched" data-id="${esc(t.id)}">Mark watched</button>
+      <button class="ghost grow" data-act="back">Back</button></div>`);
     return;
   }
-  box.innerHTML = spin.picks.map(id => `<div class="card reel">${titleCard(TITLES[id], `<div class="actions">
-      <button data-act="pick" data-id="${esc(id)}">This one</button>
-      <button class="ghost small" data-act="swap" data-id="${esc(id)}">Swap</button>
-      <button class="ghost small" data-act="seen" data-id="${esc(id)}">Seen it</button>
-      <button class="ghost small" data-act="nope" data-id="${esc(id)}">Not for me</button></div>`)}</div>`).join("");
+  box.innerHTML = spin.picks.map(id => `<div class="card reel">${titleCard(TITLES[id], `<div class="card-actions">
+      <button data-act="pick" data-id="${esc(id)}">Watch this</button>
+      <div class="minor">
+        <button class="text" data-act="swap" data-id="${esc(id)}">Swap</button>
+        <button class="text" data-act="seen" data-id="${esc(id)}">Seen it</button>
+        <button class="text" data-act="nope" data-id="${esc(id)}">Pass</button>
+      </div></div>`)}</div>`).join("");
 }
-
-// The slot-machine part: faces flicker through the batch, then land one by one.
 function rollInto(box, finals, blur, onDone) {
   box.innerHTML = finals.map(t => `<div class="card reel rolling">${titleCard(t)}</div>`).join("");
   const reels = [...box.children];
@@ -318,7 +356,6 @@ async function doSpin() {
   const order = shuffle(fresh);
   const finals = order.slice(0, 3);
   spin = { ...spin, picks: finals.map(t => t.id), spares: order.slice(3).map(t => t.id), winner: null, rolling: true };
-  $("#filters").open = false;
   rollInto($("#reels"), finals, fresh, () => {
     spin.rolling = false;
     btn.disabled = false;
@@ -427,19 +464,15 @@ function renderParty() {
       : `<div class="card empty"><h3>Waiting for the host to spin…</h3></div>`;
   } else if (s.status === "voting") {
     body = `<p class="count"><b>${s.voted}</b> of ${s.players.length} voted</p>` + s.candidates.map(t => `
-      <div class="card reel ${s.myVote === t.id ? "winner" : ""}">${titleCard(t, `<div class="actions">
-        <button data-act="vote" data-id="${esc(t.id)}" ${s.myVote === t.id ? "disabled" : ""}>${s.myVote === t.id ? "Your vote" : "Vote for this"}</button></div>`)}</div>`).join("")
+      <div class="card reel ${s.myVote === t.id ? "winner" : ""}">${titleCard(t, `<div class="card-actions">
+        <button data-act="vote" data-id="${esc(t.id)}" ${s.myVote === t.id ? "disabled" : ""}>${s.myVote === t.id ? "✓ Your vote" : "Vote for this"}</button></div>`)}</div>`).join("")
       + (host ? `<button class="big" data-act="reveal">Reveal the winner</button>
       <div style="height:8px"></div><button class="ghost" style="width:100%" data-act="room-spin">Spin three new ones</button>` : "");
   } else {
     const t = s.candidates.find(c => c.id === s.winner);
     const total = Object.values(s.tally).reduce((a, b) => a + b, 0) || 1;
-    body = `<div class="card reel winner winner-card">
-        <div class="kicker">${halloweenOn() ? "The room has chosen its fate" : "The room picked"}</div>
-        ${t.poster ? `<img class="poster big" src="${esc(t.poster)}" alt="">` : ""}
-        <h3>${esc(t.title)}</h3><div class="meta">${metaLine(t)} ${scareIcons(t.scare)}</div>
-        <p class="blurb">${esc(t.blurb)}</p>${whereTags(t)}
-        <a class="btn" href="${esc(findLink(t))}" target="_blank" rel="noopener noreferrer">Where to watch</a></div>
+    body = winnerCard(t, halloweenOn() ? "The room has chosen its fate" : "The room picked",
+        `<a class="btn" href="${esc(findLink(t))}" target="_blank" rel="noopener noreferrer">Where to watch</a>`) + `
       <div class="card"><h2 style="margin-top:0">Votes</h2>${s.candidates.map(c => `
         <div style="margin-bottom:10px"><div class="row spread"><span>${esc(c.title)}</span><b>${s.tally[c.id]}</b></div>
         <div class="bar"><i style="width:${(100 * s.tally[c.id]) / total}%"></i></div></div>`).join("")}
@@ -451,7 +484,7 @@ function renderParty() {
     <div class="card"><div class="muted small" style="text-align:center">Room code</div>
       <div class="bigcode">${esc(s.code)}</div>
       <p class="small muted" style="text-align:center;margin:0 0 10px">Others open Next Reel → Party → Join, or tap your invite link.</p>
-      <div class="actions" style="margin-bottom:10px"><button class="ghost small" data-act="share" data-link="${esc(link)}">Share invite link</button></div>
+      <div class="row" style="justify-content:center;margin-bottom:12px"><button class="ghost small" data-act="share" data-link="${esc(link)}">Share invite link</button></div>
       <div class="players">${players}</div></div>
     ${body}
     <div style="height:14px"></div><button class="ghost" style="width:100%" data-act="leave">${host ? "End the party" : "Leave"}</button>`;
@@ -528,8 +561,9 @@ function renderServices() {
     <p class="note" style="text-align:left">AMC+ includes Shudder's library.</p>
     <h2>Free apps you'd use</h2>${svcGrid("free", prefs.free)}
     <h2>Stores you'd rent or buy from</h2>${svcGrid("store", prefs.stores)}
-    <h2>Look</h2>${seg("theme", [["auto", "Auto (spooky in October)"], ["halloween", "Halloween"], ["plain", "Plain"]], prefs.theme)}
-    <div style="height:16px"></div><a class="btn" href="#spin" style="width:100%">Done, let's spin</a>
+    <h2>Look</h2>${seg("theme", [["auto", "Auto"], ["halloween", "Halloween"], ["plain", "Classic"]], prefs.theme)}
+    <p class="note" style="text-align:left">Auto turns spooky for October.</p>
+    <div style="height:18px"></div><a class="btn full" href="#spin">Done</a>
     <p class="note">${live()
       ? `Titles, posters and descriptions come from <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">TMDB</a>, and streaming availability from <a href="https://www.justwatch.com" target="_blank" rel="noopener noreferrer">JustWatch</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.`
       : `Built-in catalog of ${esc(CFG.snapshot)} availability. Studio windows are steady (Universal → Peacock, Warner → HBO Max, Paramount → Paramount+), licensed titles move monthly.`}</p>`;
@@ -565,9 +599,18 @@ async function refreshRoom() {
 
 function resetSpin() { spin = { picks: [], spares: [], winner: null, rolling: false, seeds: [] }; }
 
-view.addEventListener("click", e => {
-  const el = e.target.closest("[data-chip],[data-seg],[data-preset],[data-act],#spin,#create,#join");
+// After a filter change: inside the sheet, redraw the sheet and keep it open;
+// on the page, redraw the page.
+function filtersChanged(inSheet) {
+  prefs.preset = null; save(); resetSpin();
+  if (inSheet) { renderSheet(); refreshCount(); }
+  else renderSpin();
+}
+
+function onClick(e) {
+  const el = e.target.closest("[data-chip],[data-seg],[data-preset],[data-clear],[data-act],#spin,#create,#join");
   if (!el) return;
+  const inSheet = !!el.closest("#sheet");
   if (el.id === "spin") return doSpin();
   if (el.id === "create") return createRoom();
   if (el.id === "join") return joinRoom();
@@ -581,26 +624,47 @@ view.addEventListener("click", e => {
     const g = el.dataset.chip, v = el.dataset.value;
     if (g === "access") prefs.access[v] = !prefs.access[v];
     else prefs[g] = prefs[g].includes(v) ? prefs[g].filter(x => x !== v) : [...prefs[g], v];
-    prefs.preset = null; save(); resetSpin();
-    return renderSpin();
+    return filtersChanged(inSheet);
   }
   if (el.dataset.seg) {
     const g = el.dataset.seg, v = el.dataset.value;
     prefs[g] = g === "maxMinutes" ? Number(v) : v;
     if (g === "theme") { save(); applyTheme(); return renderServices(); }
-    prefs.preset = null; save(); resetSpin();
-    return renderSpin();
+    return filtersChanged(inSheet);
+  }
+  if (el.dataset.clear) {
+    const g = el.dataset.clear, v = el.dataset.value;
+    if (g === "genres" || g === "tags") prefs[g] = prefs[g].filter(x => x !== v);
+    else prefs[g] = g === "maxMinutes" ? 0 : v;
+    return filtersChanged(false);
   }
   const act = el.dataset.act, id = el.dataset.id;
+  if (act === "filters") return openSheet();
+  if (act === "reset") {
+    Object.assign(prefs, { kind: "both", genres: [], tags: [], scare: "any", maxMinutes: 0 });
+    return filtersChanged(true);
+  }
   if (["room-spin", "vote", "reveal", "leave", "share"].includes(act)) return partyAction(act, el);
-  if (act === "pick") { spin.winner = id; return renderReels(); }
+  if (act === "pick") { spin.winner = id; renderReels(); return $("#reels").scrollIntoView({ block: "start" }); }
   if (act === "back") { spin.winner = null; return renderReels(); }
   if (act === "swap") return swap(id);
-  if (act === "seen" || act === "nope") { markSeen(id, act === "seen" ? "watched" : "nope"); return swap(id); }
+  if (act === "seen" || act === "nope") {
+    markSeen(id, act === "seen" ? "watched" : "nope");
+    toast(act === "seen" ? "Got it, it won't come up again." : "Passed. It won't come up again.");
+    return swap(id);
+  }
   if (act === "watched") { markSeen(id, "watched"); toast("Marked watched. Enjoy the show."); resetSpin(); return renderSpin(); }
   if (act === "unsee") { delete seen[id]; saved.set("seen", seen); return renderWatched(); }
   if (act === "unsee-all") { seen = {}; saved.set("seen", seen); return renderWatched(); }
+}
+
+view.addEventListener("click", onClick);
+$("#sheet").addEventListener("click", e => {
+  if (e.target === e.currentTarget) return e.currentTarget.close();   // tap on the backdrop
+  if (e.target.closest('a[href^="#"]')) e.currentTarget.close();
+  onClick(e);
 });
+$("#sheet").addEventListener("close", () => { if ((location.hash || "#spin") === "#spin") renderSpin(); });
 
 view.addEventListener("change", e => {
   const el = e.target;
