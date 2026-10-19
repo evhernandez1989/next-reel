@@ -20,7 +20,29 @@ CATALOG = json.loads((ROOT / "public" / "catalog.json").read_text())
 SERVICES = {s["id"]: s["kind"] for s in CATALOG["services"]}
 BY_ID = {t["id"]: t for t in CATALOG["titles"]}
 ACCESS = ("sub", "free", "rent", "buy")
-SCARES = ("any", "cozy", "spooky", "terrifying")
+# The four rating chips, and every US rating (film and TV) that counts as each.
+RATING_GROUP = {"G": {"G", "TV-Y", "TV-Y7", "TV-G"}, "PG": {"PG", "TV-PG"},
+                "PG-13": {"PG-13", "TV-14"}, "R": {"R", "NC-17", "TV-MA"}}
+
+# Which styles belong to which genre. A style chip only shows when its genre is
+# picked; "classic" and "international" apply to anything.
+STYLES = {
+    "horror": ["slasher", "supernatural", "haunted", "folk", "creature", "zombie", "vampire", "witch",
+               "psychological", "found-footage", "horror-comedy", "halloween"],
+    "thriller": ["psych-thriller", "conspiracy", "survival", "serial-killer", "heist"],
+    "comedy": ["dark-comedy", "parody", "romcom", "buddy", "horror-comedy", "halloween"],
+    "scifi": ["time-travel", "space", "dystopia", "ai", "alien"],
+    "fantasy": ["magic", "fairy-tale", "dragon", "witch", "halloween"],
+    "mystery": ["whodunit", "detective", "supernatural"],
+    "drama": ["true-story", "coming-of-age", "sports", "based-on-book"],
+    "action": ["superhero", "martial-arts", "spy", "heist"],
+    "crime": ["heist", "serial-killer", "detective", "true-story"],
+    "animation": ["anime", "stop-motion", "halloween", "christmas"],
+    "family": ["halloween", "christmas", "coming-of-age"],
+    "romance": ["romcom", "based-on-book", "coming-of-age"],
+    "documentary": ["true-crime", "nature", "sports", "music"],
+}
+GENERAL_TAGS = ["classic", "international"]
 
 
 def env(*names):
@@ -50,7 +72,6 @@ def _one(q, name):
 
 def parse_filters(q) -> dict:
     kind = _one(q, "kind")
-    scare = _one(q, "scare")
     try:
         mx = int(_one(q, "max") or 0)
     except ValueError:
@@ -66,8 +87,8 @@ def parse_filters(q) -> dict:
         "free": _list(q, "free", {k for k, v in SERVICES.items() if v == "free"}),
         "stores": _list(q, "stores", {k for k, v in SERVICES.items() if v == "store"}),
         "genres": _list(q, "genres", set(CATALOG["genres"])),
-        "tags": _list(q, "tags", set(CATALOG["tags"])),
-        "scare": scare if scare in SCARES else "any",
+        "tags": _list(q, "tags", set(CATALOG["tags"]) | set(tmdb.SUPPORTED_TAGS)),
+        "ratings": _list(q, "ratings", set(RATING_GROUP)),
         "maxMinutes": mx if mx in (100, 120) else 0,
         "seed": seed,
     }
@@ -92,9 +113,14 @@ def usable(t, f) -> bool:
     return "buy" in a and bool(set(f["stores"]) & set(t["buy"]))
 
 
-def scare_ok(t, scare):
-    s = t.get("scare") or 0
-    return {"cozy": 1 <= s <= 2, "spooky": s == 3, "terrifying": s >= 4}.get(scare, True)
+def watchable(t, f) -> bool:
+    return rating_ok(t, f) and usable(t, f)
+
+
+def rating_ok(t, f) -> bool:
+    if not f["ratings"]:
+        return True
+    return any(t.get("rating") in RATING_GROUP[r] for r in f["ratings"])
 
 
 def catalog_match(t, f) -> bool:
@@ -104,11 +130,9 @@ def catalog_match(t, f) -> bool:
         return False
     if f["tags"] and not set(f["tags"]) & set(t["tags"]):
         return False
-    if not scare_ok(t, f["scare"]):
-        return False
     if f["maxMinutes"] and t["kind"] == "movie" and t["minutes"] > f["maxMinutes"]:
         return False
-    return usable(t, f)
+    return watchable(t, f)
 
 
 def catalog_spin(f, want=24):
@@ -122,7 +146,7 @@ def spin(f) -> dict:
         return {"source": "none", "total": 0, "titles": []}
     if tmdb.enabled():
         try:
-            total, titles = tmdb.spin(f, SERVICES, lambda t: usable(t, f))
+            total, titles = tmdb.spin(f, SERVICES, lambda t: watchable(t, f))
             return {"source": "tmdb", "total": total, "titles": titles}
         except tmdb.TMDBError:
             pass        # fall through to the bundled catalog rather than an empty screen
@@ -165,14 +189,17 @@ def parties_ready():
 
 
 def config() -> dict:
+    tags = tmdb.SUPPORTED_TAGS if tmdb.enabled() else CATALOG["tags"]
     return {
         "source": "tmdb" if tmdb.enabled() else "catalog",
         "parties": parties_ready(),
         "snapshot": CATALOG["snapshot"],
         "services": CATALOG["services"], "includes": CATALOG["includes"],
         "genres": CATALOG["genres"],
-        "tags": tmdb.SUPPORTED_TAGS if tmdb.enabled() else CATALOG["tags"],
-        "scareByRating": tmdb.enabled(),
+        "tags": tags,
+        "styles": {g: [t for t in ts if t in tags] for g, ts in STYLES.items()},
+        "general": [t for t in GENERAL_TAGS if t in tags],
+        "ratings": list(RATING_GROUP),
     }
 
 

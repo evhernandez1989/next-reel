@@ -73,8 +73,20 @@ class FilterTest(unittest.TestCase):
         self.assertTrue(core.usable(core.BY_ID["host"], f))
 
     def test_junk_is_dropped(self):
-        f = self.q(kind="x", genres="horror,<script>", scare="evil", max="999", seed="-5")
-        self.assertEqual((f["kind"], f["genres"], f["scare"], f["maxMinutes"]), ("both", ["horror"], "any", 0))
+        f = self.q(kind="x", genres="horror,<script>", ratings="PG,X,R", tags="slasher,bogus", max="999", seed="-5")
+        self.assertEqual((f["kind"], f["genres"], f["ratings"], f["tags"], f["maxMinutes"]),
+                         ("both", ["horror"], ["PG", "R"], ["slasher"], 0))
+
+    def test_ratings_filter_catalog(self):
+        total, titles = core.catalog_spin(self.q(genres="horror", ratings="PG,PG-13"), want=200)
+        self.assertGreater(total, 0)
+        self.assertTrue(all(t["rating"] in {"PG", "PG-13", "TV-PG", "TV-14"} for t in titles))
+
+    def test_every_style_belongs_to_a_known_tag(self):
+        known = set(core.CATALOG["tags"]) | set(tmdb.SUPPORTED_TAGS)
+        for g, ts in core.STYLES.items():
+            self.assertIn(g, core.CATALOG["genres"])
+            self.assertTrue(set(ts) <= known, (g, set(ts) - known))
 
     def test_no_access_no_titles(self):
         self.assertEqual(core.spin(self.q(access=""))["total"], 0)
@@ -244,7 +256,7 @@ class TMDBSpinTest(unittest.TestCase):
     def test_spin_builds_params_and_keeps_only_watchable(self):
         self.calls = []
         f = core.parse_filters({"kind": ["movie"], "access": ["sub,free"], "subs": ["netflix"], "free": ["tubi"],
-                                "genres": ["horror"], "tags": ["halloween"], "scare": ["cozy"], "seed": ["3"]})
+                                "genres": ["horror"], "tags": ["halloween"], "ratings": ["PG,PG-13"], "seed": ["3"]})
         with mock.patch.object(tmdb, "get", side_effect=self.fake_get):
             total, titles = tmdb.spin(f, core.SERVICES, lambda t: core.usable(t, f))
         self.assertEqual(total, 2)
@@ -253,16 +265,18 @@ class TMDBSpinTest(unittest.TestCase):
         self.assertEqual(disc["with_watch_providers"], "8|73")
         self.assertEqual(disc["with_watch_monetization_types"], "flatrate|free|ads")
         self.assertEqual((disc["with_genres"], disc["with_keywords"]), ("27", "3335"))
-        self.assertEqual(disc["certification.lte"], "PG-13")
+        self.assertEqual(disc["certification"], "PG|PG-13")
 
-    def test_cozy_drops_titles_rated_r_despite_tmdb(self):
-        f = core.parse_filters({"scare": ["cozy"]})
-        self.assertFalse(tmdb.rating_ok({"rating": "R"}, f))
-        self.assertFalse(tmdb.rating_ok({"rating": "NR"}, f))
-        self.assertTrue(tmdb.rating_ok({"rating": "PG-13"}, f))
-        f = core.parse_filters({"scare": ["terrifying"]})
-        self.assertTrue(tmdb.rating_ok({"rating": "TV-MA"}, f))
-        self.assertFalse(tmdb.rating_ok({"rating": "PG"}, f))
+    def test_rating_groups(self):
+        f = core.parse_filters({"ratings": ["PG,PG-13"]})
+        self.assertFalse(core.rating_ok({"rating": "R"}, f))
+        self.assertFalse(core.rating_ok({"rating": "NR"}, f))
+        self.assertTrue(core.rating_ok({"rating": "PG-13"}, f))
+        self.assertTrue(core.rating_ok({"rating": "TV-14"}, f), "TV-14 counts as PG-13")
+        f = core.parse_filters({"ratings": ["R"]})
+        self.assertTrue(core.rating_ok({"rating": "TV-MA"}, f))
+        self.assertFalse(core.rating_ok({"rating": "PG"}, f))
+        self.assertTrue(core.rating_ok({"rating": "NR"}, core.parse_filters({})), "no rating chip = anything")
 
     def test_tv_horror_uses_keywords(self):
         self.calls = []

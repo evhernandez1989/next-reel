@@ -26,33 +26,44 @@ const ACCESS = [["sub", "My subscriptions"], ["free", "Free"], ["rent", "Rent"],
 const GENRE_NAMES = { horror: "Horror", thriller: "Thriller", comedy: "Comedy", scifi: "Sci-fi", fantasy: "Fantasy",
   mystery: "Mystery", drama: "Drama", action: "Action", crime: "Crime", animation: "Animation", family: "Family",
   romance: "Romance", documentary: "Documentary" };
-const TAG_NAMES = { halloween: "Halloween night", cozy: "Cozy", slasher: "Slasher", supernatural: "Supernatural",
-  haunted: "Haunted house", folk: "Folk horror", creature: "Creature feature", zombie: "Zombies", vampire: "Vampires",
-  witch: "Witches", psychological: "Psychological", "found-footage": "Found footage", "horror-comedy": "Horror-comedy",
-  classic: "Classic (pre-1990)", international: "International" };
-// Horror styles only make sense with Horror picked; Extras work with any genre.
-const HORROR_STYLES = ["slasher", "supernatural", "haunted", "folk", "creature", "zombie", "vampire", "witch",
-  "psychological", "found-footage", "horror-comedy"];
-const EXTRAS = ["halloween", "classic", "international"];
+const TAG_NAMES = {
+  halloween: "Halloween night", slasher: "Slasher", supernatural: "Supernatural", haunted: "Haunted house",
+  folk: "Folk horror", creature: "Creature feature", zombie: "Zombies", vampire: "Vampires", witch: "Witches",
+  psychological: "Psychological", "found-footage": "Found footage", "horror-comedy": "Horror-comedy",
+  "psych-thriller": "Psychological", conspiracy: "Conspiracy", survival: "Survival", "serial-killer": "Serial killer",
+  heist: "Heist", whodunit: "Whodunit", detective: "Detective", "dark-comedy": "Dark comedy", parody: "Parody",
+  romcom: "Rom-com", buddy: "Buddy comedy", "time-travel": "Time travel", space: "Space", dystopia: "Dystopia",
+  ai: "AI & robots", alien: "Aliens", magic: "Magic", "fairy-tale": "Fairy tale", dragon: "Dragons",
+  superhero: "Superhero", "martial-arts": "Martial arts", spy: "Spy", "true-story": "True story",
+  "coming-of-age": "Coming of age", sports: "Sports", "based-on-book": "Based on a book", anime: "Anime",
+  "stop-motion": "Stop-motion", christmas: "Christmas", "true-crime": "True crime", nature: "Nature",
+  music: "Music", classic: "Classics (pre-1990)", international: "International", cozy: "Cozy",
+};
+// Rating chips; TV ratings count with their film equivalent (TV-14 is PG-13, TV-MA is R).
+const RATING_HINT = { G: "G · TV-G", PG: "PG · TV-PG", "PG-13": "PG-13 · TV-14", R: "R · TV-MA" };
 const LENGTHS = [[0, "Any length"], [100, "Under 100 min"], [120, "Under 2 hrs"]];
 const live = () => CFG.source === "tmdb";
-const scares = () => live()
-  ? [["any", "Any"], ["cozy", "Cozy (PG-13 & under)"], ["terrifying", "Rated R"]]
-  : [["any", "Any"], ["cozy", "Cozy"], ["spooky", "Spooky"], ["terrifying", "Terrifying"]];
+
+// Styles that belong to the picked genres, in order, without repeats.
+function visibleStyles() {
+  const out = [];
+  for (const g of prefs.genres) for (const t of CFG.styles[g] || []) if (!out.includes(t)) out.push(t);
+  return out;
+}
 
 const PRESETS = [
-  { id: "fright", name: "🎃 Fright Night", set: { genres: ["horror"], tags: [], scare: "any" } },
-  { id: "halloween", name: "🕯️ Halloween", set: { genres: [], tags: ["halloween"], scare: "any" } },
-  { id: "cozy", name: "🧙 Cozy spooky", set: { genres: ["horror", "fantasy"], tags: [], scare: "cozy" } },
-  { id: "terror", name: "💀 Terrify me", set: { genres: ["horror"], tags: [], scare: "terrifying" } },
+  { id: "fright", name: "🎃 Fright Night", set: { genres: ["horror"], tags: [], ratings: [] } },
+  { id: "halloween", name: "🕯️ Halloween", set: { genres: [], tags: ["halloween"], ratings: [] } },
+  { id: "cozy", name: "🧙 Cozy spooky", set: { genres: ["horror", "fantasy"], tags: [], ratings: ["PG", "PG-13"] } },
+  { id: "terror", name: "💀 Terrify me", set: { genres: ["horror"], tags: [], ratings: ["R"] } },
   { id: "free", name: "🆓 Free tonight", set: { access: { sub: false, free: true, rent: false, buy: false } } },
-  { id: "any", name: "🎲 Anything", set: { genres: [], tags: [], scare: "any", kind: "both", maxMinutes: 0 } },
+  { id: "any", name: "🎲 Anything", set: { genres: [], tags: [], ratings: [], kind: "both", maxMinutes: 0 } },
 ];
 
 function defaults() {
   const ids = kind => CFG.services.filter(s => s.kind === kind).map(s => s.id);
   return { subs: [], free: ids("free"), stores: ids("store"), access: { sub: true, free: true, rent: false, buy: false },
-    kind: "both", genres: [], tags: [], scare: "any", maxMinutes: 0, tv: "other", preset: null, setUp: false };
+    kind: "both", genres: [], tags: [], ratings: [], maxMinutes: 0, tv: "other", preset: null, setUp: false };
 }
 function save() { saved.set("prefs", prefs); }
 
@@ -93,7 +104,7 @@ function query(seed) {
   return new URLSearchParams({
     kind: prefs.kind, access: ACCESS.map(([k]) => k).filter(k => prefs.access[k]).join(","),
     subs: [...prefs.subs].sort().join(","), free: [...prefs.free].sort().join(","), stores: [...prefs.stores].sort().join(","),
-    genres: [...prefs.genres].sort().join(","), tags: [...prefs.tags].sort().join(","), scare: prefs.scare,
+    genres: [...prefs.genres].sort().join(","), tags: [...prefs.tags].sort().join(","), ratings: [...prefs.ratings].sort().join(","),
     max: prefs.maxMinutes, seed,
   }).toString();
 }
@@ -144,7 +155,7 @@ function loosenHint() {
   const a = prefs.access;
   if (!Object.values(a).some(Boolean)) return "Turn on at least one way to watch.";
   if (a.sub && !a.free && !a.rent && !a.buy && !prefs.subs.length) return "Pick your subscriptions in Services, or allow free or rentals.";
-  if (prefs.scare !== "any") return "Try a different scare level.";
+  if (prefs.ratings.length) return "Add another rating.";
   if (prefs.tags.length) return "Drop a style or extra or two.";
   if (prefs.genres.length) return "Add another genre.";
   return "Allow rentals to open up nearly everything.";
@@ -274,8 +285,7 @@ function activePills() {
   if (prefs.kind !== "both") out.push(["kind", "both", prefs.kind === "movie" ? "Movies" : "Shows"]);
   for (const g of prefs.genres) out.push(["genres", g, GENRE_NAMES[g] || g]);
   for (const t of prefs.tags) out.push(["tags", t, TAG_NAMES[t] || t]);
-  const sc = scares().find(([v]) => v === prefs.scare);
-  if (prefs.scare !== "any" && sc) out.push(["scare", "any", sc[1]]);
+  for (const r of prefs.ratings) out.push(["ratings", r, r]);
   if (prefs.maxMinutes) out.push(["maxMinutes", 0, LENGTHS.find(([v]) => v === prefs.maxMinutes)[1]]);
   return out;
 }
@@ -287,16 +297,25 @@ function howLine() {
 
 function renderSheet() {
   const body = $("#sheetBody");
-  const horror = prefs.genres.includes("horror");
-  const styles = CFG.tags.filter(t => HORROR_STYLES.includes(t));
-  const extras = CFG.tags.filter(t => EXTRAS.includes(t));
+  const styleChips = list => list.map(g => chip("tags", g, TAG_NAMES[g] || g, prefs.tags.includes(g))).join("");
+  // One "<Genre> style" row per picked genre that has styles; a style shared by
+  // two genres shows under the first.
+  const shown = [];
+  const styleRows = prefs.genres.map(g => {
+    const own = (CFG.styles[g] || []).filter(t => !shown.includes(t));
+    shown.push(...own);
+    return own.length ? `<h2>${esc(GENRE_NAMES[g] || g)} style</h2><div class="chips">${styleChips(own)}</div>` : "";
+  }).join("");
+  // Classics apply to anything. A picked style whose genre isn't picked (the Halloween quick pick) shows here too, so it can be turned off.
+  const more = [...CFG.general, ...prefs.tags.filter(t => !shown.includes(t) && !CFG.general.includes(t))];
   body.innerHTML = `
     <h2>Watch</h2>${seg("kind", [["both", "Both"], ["movie", "Movies"], ["tv", "Shows"]], prefs.kind)}
     <h2>How</h2><div class="chips">${ACCESS.map(([k, l]) => chip("access", k, l, prefs.access[k])).join("")}</div>
     <h2>Genre</h2><div class="chips">${CFG.genres.map(g => chip("genres", g, GENRE_NAMES[g] || g, prefs.genres.includes(g))).join("")}</div>
-    ${horror && styles.length ? `<h2>Horror style</h2><div class="chips">${styles.map(g => chip("tags", g, TAG_NAMES[g] || g, prefs.tags.includes(g))).join("")}</div>` : ""}
-    ${extras.length ? `<h2>Extras</h2><div class="chips">${extras.map(g => chip("tags", g, TAG_NAMES[g] || g, prefs.tags.includes(g))).join("")}</div>` : ""}
-    <h2>Scare level</h2>${seg("scare", scares(), prefs.scare)}
+    ${styleRows || (prefs.genres.length ? "" : `<p class="note" style="text-align:left;margin-top:10px">Pick a genre to see its styles.</p>`)}
+    <h2>Rating</h2><div class="chips">${CFG.ratings.map(r => `<button type="button" class="chip" data-chip="ratings" data-value="${r}" aria-pressed="${prefs.ratings.includes(r)}" title="${esc(RATING_HINT[r] || r)}">${r}</button>`).join("")}</div>
+    <p class="tv-hint">Pick one or more. TV-14 counts as PG-13 and TV-MA as R.</p>
+    ${more.length ? `<h2>More</h2><div class="chips">${styleChips(more)}</div>` : ""}
     <h2>Movie length</h2>${seg("maxMinutes", LENGTHS, prefs.maxMinutes)}
     <p class="note" style="text-align:left">Your services are set on the <a href="#services">Services</a> tab.</p>`;
   paintCount();
@@ -693,6 +712,13 @@ function filtersChanged(inSheet) {
   else renderSpin();
 }
 
+// Turning a genre off drops the styles only it offered.
+function dropOrphanStyles(genre) {
+  if (prefs.genres.includes(genre)) return;
+  const still = new Set(visibleStyles());
+  prefs.tags = prefs.tags.filter(t => still.has(t) || CFG.general.includes(t) || !(CFG.styles[genre] || []).includes(t));
+}
+
 function onClick(e) {
   const el = e.target.closest("[data-chip],[data-seg],[data-preset],[data-clear],[data-svc],[data-act],#spin,#create,#join");
   if (!el) return;
@@ -717,7 +743,7 @@ function onClick(e) {
     const g = el.dataset.chip, v = el.dataset.value;
     if (g === "access") prefs.access[v] = !prefs.access[v];
     else prefs[g] = prefs[g].includes(v) ? prefs[g].filter(x => x !== v) : [...prefs[g], v];
-    if (!prefs.genres.includes("horror")) prefs.tags = prefs.tags.filter(t => !HORROR_STYLES.includes(t));
+    if (g === "genres") dropOrphanStyles(v);
     return filtersChanged(inSheet);
   }
   if (el.dataset.seg) {
@@ -728,15 +754,15 @@ function onClick(e) {
   }
   if (el.dataset.clear) {
     const g = el.dataset.clear, v = el.dataset.value;
-    if (g === "genres" || g === "tags") prefs[g] = prefs[g].filter(x => x !== v);
-    if (!prefs.genres.includes("horror")) prefs.tags = prefs.tags.filter(t => !HORROR_STYLES.includes(t));
+    if (["genres", "tags", "ratings"].includes(g)) prefs[g] = prefs[g].filter(x => x !== v);
     else prefs[g] = g === "maxMinutes" ? 0 : v;
+    if (g === "genres") dropOrphanStyles(v);
     return filtersChanged(false);
   }
   const act = el.dataset.act, id = el.dataset.id;
   if (act === "filters") return openSheet();
   if (act === "reset") {
-    Object.assign(prefs, { kind: "both", genres: [], tags: [], scare: "any", maxMinutes: 0 });
+    Object.assign(prefs, { kind: "both", genres: [], tags: [], ratings: [], maxMinutes: 0 });
     return filtersChanged(true);
   }
   if (["room-spin", "vote", "reveal", "leave", "share"].includes(act)) return partyAction(act, el);
@@ -774,7 +800,9 @@ window.addEventListener("hashchange", route);
 
 (async function boot() {
   try {
-    CFG = await fetch("/api/config").then(r => { if (!r.ok) throw new Error(); return r.json(); });
+    CFG = await fetch("/api/config", { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(); return r.json(); });
+    // Tolerate an older server for the minute a deploy takes to settle.
+    CFG.styles = CFG.styles || {}; CFG.general = CFG.general || []; CFG.ratings = CFG.ratings || ["G", "PG", "PG-13", "R"];
   } catch {
     view.innerHTML = `<h1>Next Reel</h1><div class="card empty"><p>Couldn't reach the server. Check your connection and reload.</p></div>`;
     return;
@@ -785,8 +813,9 @@ window.addEventListener("hashchange", route);
   // Drop anything this server no longer offers.
   for (const k of ["subs", "free", "stores"]) prefs[k] = prefs[k].filter(id => SVC[id]);
   prefs.genres = prefs.genres.filter(g => CFG.genres.includes(g));
-  prefs.tags = prefs.tags.filter(g => CFG.tags.includes(g) && g !== "cozy");
-  if (!scares().some(([v]) => v === prefs.scare)) prefs.scare = "any";
+  prefs.tags = prefs.tags.filter(g => CFG.tags.includes(g));
+  prefs.ratings = (prefs.ratings || []).filter(r => CFG.ratings.includes(r));
+  delete prefs.scare;
   applyTheme();
   if (joinFromLink() && !location.hash) location.hash = "#party";
   route();

@@ -65,15 +65,35 @@ REV_MOVIE = {v: k for k, v in GENRE_MOVIE.items()}
 REV_TV = {16: "animation", 35: "comedy", 80: "crime", 99: "documentary", 18: "drama", 10751: "family",
           9648: "mystery", 10759: "action", 10765: "scifi"}
 
-# Styles and extras TMDB can do, as keyword searches. The rest are handled by date or rating, or hidden.
+# Styles TMDB can do, as keyword searches (OR'd together). "classic" is a date
+# filter instead. Keyword names drift, so each style lists a few spellings.
 TAG_KEYWORDS = {
+    # horror
     "halloween": ["halloween"], "slasher": ["slasher"], "supernatural": ["supernatural"],
     "haunted": ["haunted house"], "folk": ["folk horror"], "creature": ["creature feature", "monster"],
     "zombie": ["zombie"], "vampire": ["vampire"], "witch": ["witch"], "psychological": ["psychological horror"],
     "found-footage": ["found footage"], "horror-comedy": ["horror comedy", "comedy horror"],
+    # thriller / crime / mystery
+    "psych-thriller": ["psychological thriller"], "conspiracy": ["conspiracy"], "survival": ["survival"],
+    "serial-killer": ["serial killer"], "heist": ["heist"], "whodunit": ["whodunit", "murder mystery"],
+    "detective": ["detective", "private detective"],
+    # comedy / romance
+    "dark-comedy": ["dark comedy", "black comedy"], "parody": ["parody", "spoof"],
+    "romcom": ["romantic comedy"], "buddy": ["buddy comedy"],
+    # sci-fi / fantasy
+    "time-travel": ["time travel"], "space": ["outer space", "space travel", "space"], "dystopia": ["dystopia"],
+    "ai": ["artificial intelligence (a.i.)", "artificial intelligence"], "alien": ["alien", "alien invasion"],
+    "magic": ["magic"], "fairy-tale": ["fairy tale"], "dragon": ["dragon"],
+    # action
+    "superhero": ["superhero"], "martial-arts": ["martial arts"], "spy": ["spy", "espionage"],
+    # drama / family / animation / documentary
+    "true-story": ["based on true story"], "coming-of-age": ["coming of age"], "sports": ["sports"],
+    "based-on-book": ["based on novel or book"], "anime": ["anime"], "stop-motion": ["stop motion"],
+    "christmas": ["christmas"], "true-crime": ["true crime"], "nature": ["nature", "wildlife"],
+    "music": ["music", "concert"],
 }
 TV_HORROR_KEYWORDS = ["horror", "supernatural", "ghost", "zombie", "vampire", "slasher"]
-SUPPORTED_TAGS = list(TAG_KEYWORDS) + ["classic", "cozy"]
+SUPPORTED_TAGS = list(TAG_KEYWORDS) + ["classic"]
 
 _cache, _lock = {}, threading.Lock()
 _ctx = ssl.create_default_context()
@@ -123,12 +143,12 @@ def provider_ids(kind, service_ids):
 
 
 def keyword_ids(queries):
+    """Exact name matches; when a spelling has none, its closest result."""
     out = set()
     for q in queries:
-        data = get("/search/keyword", {"query": q}, ttl=7 * 86400)
-        for k in data.get("results", []):
-            if k["name"].lower() == q.lower():
-                out.add(k["id"])
+        results = get("/search/keyword", {"query": q}, ttl=7 * 86400).get("results", [])
+        exact = [k["id"] for k in results if k["name"].lower() == q.lower()]
+        out.update(exact or [k["id"] for k in results[:1]])
     return sorted(out)
 
 
@@ -222,36 +242,26 @@ def discover_params(kind, f, services):
     if "classic" in f["tags"]:
         p["primary_release_date.lte" if kind == "movie" else "first_air_date.lte"] = "1989-12-31"
     if kind == "movie":
-        cozy = f["scare"] == "cozy" or "cozy" in f["tags"]
-        if cozy:
-            p["certification_country"], p["certification.lte"] = "US", "PG-13"
-        elif f["scare"] == "terrifying":
-            p["certification_country"], p["certification"] = "US", "R|NC-17"
+        if f["ratings"]:
+            certs = [c for r in f["ratings"] for c in MOVIE_CERTS[r]]
+            p["certification_country"], p["certification"] = "US", "|".join(certs)
         if f["maxMinutes"]:
             p["with_runtime.lte"] = f["maxMinutes"]
     return p
 
 
-# TMDB's certification filter matches if *any* US release has the rating, so
-# Midsommar (R, plus an unrated cut) passes "PG-13 and under". Check the rating
-# we actually show instead.
-COZY_RATINGS = {"G", "PG", "PG-13", "TV-Y", "TV-Y7", "TV-G", "TV-PG", "TV-14"}
-SCARY_RATINGS = {"R", "NC-17", "TV-MA"}
-
-
-def rating_ok(t, f):
-    if f["scare"] == "cozy" or "cozy" in f["tags"]:
-        return t["rating"] in COZY_RATINGS
-    if f["scare"] == "terrifying":
-        return t["rating"] in SCARY_RATINGS
-    return True
+MOVIE_CERTS = {"G": ["G"], "PG": ["PG"], "PG-13": ["PG-13"], "R": ["R", "NC-17"]}
 
 
 def spin(f, services, usable, want=12):
-    """A batch of enriched titles that match f, plus TMDB's match count."""
+    """A batch of enriched titles that match f, plus TMDB's match count.
+
+    usable(t) is the final word: it re-checks services and the rating we
+    actually show, because TMDB's certification filter matches if *any* US
+    release has the rating (Midsommar's unrated cut, say)."""
     kinds = ["movie", "tv"] if f["kind"] == "both" else [f["kind"]]
-    if f["scare"] == "terrifying" or f["maxMinutes"]:
-        kinds = [k for k in kinds if k == "movie"] or kinds   # ratings and runtime are movie-only filters
+    if f["maxMinutes"]:
+        kinds = [k for k in kinds if k == "movie"] or kinds   # runtime is a movie-only filter
     rng = random.Random(f["seed"])
     total, candidates = 0, []
     for kind in kinds:
@@ -268,7 +278,7 @@ def spin(f, services, usable, want=12):
     candidates = candidates[: want * 2]
     with ThreadPoolExecutor(max_workers=8) as pool:
         titles = list(pool.map(lambda i: _safe_details(i, services), candidates))
-    titles = [t for t in titles if t and usable(t) and rating_ok(t, f)]
+    titles = [t for t in titles if t and usable(t)]
     return total, titles[:want]
 
 
